@@ -115,6 +115,17 @@ func TestQuoteToAbiBytes(t *testing.T) {
 	if !bytes.Equal(test.RawQuote, rawQuote) {
 		t.Errorf("raw quote bytes got %v. Expected %v", rawQuote, test.RawQuote)
 	}
+	quoteV5, err := QuoteToProto(test.RawQuoteV5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rawQuoteV5, err := QuoteToAbiBytes(quoteV5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(test.RawQuoteV5, rawQuoteV5) {
+		t.Errorf("raw quote v5 bytes got %v. Expected %v", rawQuoteV5, test.RawQuoteV5)
+	}
 
 }
 func TestNilToAbiBytesConversions(t *testing.T) {
@@ -146,6 +157,12 @@ func TestNilToAbiBytesConversions(t *testing.T) {
 	if _, err := EnclaveReportToAbiBytes(nil); err != ErrQeReportNil {
 		t.Error(err)
 	}
+	if _, err := TdQuoteBodyDescriptorToAbiBytes(nil); err != ErrTDQuoteBodyDescriptorNil {
+		t.Error(err)
+	}
+	if _, err := TdQuoteBodyV5ToAbiBytes(nil, tdxVersion15BodyType); err != ErrQuoteV5Nil {
+		t.Error(err)
+	}
 }
 
 func TestInvalidConversionsToAbiBytes(t *testing.T) {
@@ -166,7 +183,14 @@ func TestInvalidConversionsToAbiBytes(t *testing.T) {
 		"header invalid: attestation key type not supported",
 		"header invalid: TEE type is not TDX",
 		"QE Report invalid: cpuSvn size is 0 bytes. Expected 16 bytes",
+		"quoteV5 invalid: quoteV5 header error: header is nil",
+		"td quote body V5 invalid: tdx version 5 is not supported",
+		"td quote body V5 invalid: teeTcbSvn size is 0 bytes. Expected 16 bytes",
+		"td quote body V5 invalid: teeTcbSvn2 is not expected to be set for TDX version 1.0",
+		"td quote body V5 invalid: teeTcbSvn2 size is 1 bytes. Expected 16 bytes",
+		"td quote body descriptor invalid: unsupported TD quote body type , got 0",
 	}
+
 	if _, err := QuoteToAbiBytes(&pb.QuoteV4{}); err == nil || err.Error() != expectedErrors[0] {
 		t.Errorf("error found: %v, want error: %s", err, expectedErrors[0])
 	}
@@ -215,5 +239,31 @@ func TestInvalidConversionsToAbiBytes(t *testing.T) {
 	}
 	if _, err := EnclaveReportToAbiBytes(&pb.EnclaveReport{}); err == nil || err.Error() != expectedErrors[15] {
 		t.Errorf("error found: %v, want error: %s", err, expectedErrors[15])
+	}
+	if _, err := QuoteToAbiBytes(&pb.QuoteV5{}); err == nil || err.Error() != expectedErrors[16] {
+		t.Errorf("error found: %v, want error: %s", err, expectedErrors[16])
+	}
+	if _, err := TdQuoteBodyV5ToAbiBytes(&pb.TDQuoteBodyV5{}, 5); err == nil || err.Error() != expectedErrors[17] {
+		t.Errorf("error found: %v, want error: %s", err, expectedErrors[17])
+	}
+
+	if _, err := TdQuoteBodyV5ToAbiBytes(&pb.TDQuoteBodyV5{}, tdxVersion10BodyType); err == nil || err.Error() != expectedErrors[18] {
+		t.Errorf("error found: %v, want error: %s", err, expectedErrors[18])
+	}
+
+	quoteV5, err := QuoteToProto(test.RawQuoteV5)
+	if err != nil {
+		t.Fatalf("failed to parse RawQuoteV5: %v", err)
+	}
+	tdQuoteBodyV5 := quoteV5.(*pb.QuoteV5).GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5()
+	if _, err := TdQuoteBodyV5ToAbiBytes(tdQuoteBodyV5, tdxVersion10BodyType); err == nil || err.Error() != expectedErrors[19] {
+		t.Errorf("error found: %v, want error: %s", err, expectedErrors[19])
+	}
+	tdQuoteBodyV5.TeeTcbSvn2 = []byte{1}
+	if _, err := TdQuoteBodyV5ToAbiBytes(tdQuoteBodyV5, tdxVersion15BodyType); err == nil || err.Error() != expectedErrors[20] {
+		t.Errorf("error found: %v, want error: %s", err, expectedErrors[20])
+	}
+	if _, err := TdQuoteBodyDescriptorToAbiBytes(&pb.TDQuoteBodyDescriptor{}); err == nil || err.Error() != expectedErrors[21] {
+		t.Errorf("error found: %v, want error: %s", err, expectedErrors[21])
 	}
 }
