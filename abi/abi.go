@@ -1235,19 +1235,22 @@ func TdQuoteBodyDescriptorToAbiBytes(tdQuoteBodyDescriptor *pb.TDQuoteBodyDescri
 	}
 	quoteBodyDescriptorSize := tdQuoteBodyDescriptor.GetTdQuoteBodySize() + quoteBodyTypeSizeV5 + quoteBodySizeFieldLengthV5
 	data := make([]byte, quoteBodyDescriptorSize)
-	var offset int32 = 0
+	var offset int32
 	binary.LittleEndian.PutUint16(data[offset:offset+quoteBodyTypeSizeV5], uint16(tdQuoteBodyDescriptor.GetTdQuoteBodyType()))
-	offset += quoteBodyTypeSizeV5
+	offset = quoteBodyTypeSizeV5
 	binary.LittleEndian.PutUint32(data[offset:offset+quoteBodySizeFieldLengthV5], uint32(tdQuoteBodyDescriptor.GetTdQuoteBodySize()))
 	offset += quoteBodySizeFieldLengthV5
+
+	if offset != quoteBodyTypeSizeV5+quoteBodySizeFieldLengthV5 {
+		return nil, fmt.Errorf("quoteBodyStart offset is %d bytes. Expected %d bytes", offset, quoteBodyTypeSizeV5+quoteBodySizeFieldLengthV5)
+	}
+
 	tdQuoteBodyData, err := TdQuoteBodyV5ToAbiBytes(tdQuoteBodyDescriptor.GetTdQuoteBodyV5(), tdQuoteBodyDescriptor.GetTdQuoteBodyType())
 	if err != nil {
 		return nil, fmt.Errorf("td quote body to abi bytes conversion failed: %v", err)
 	}
-	if offset != quoteBodyTypeSizeV5+quoteBodySizeFieldLengthV5 {
-		return nil, fmt.Errorf("quoteBodyStart offset is %d bytes. Expected %d bytes", offset, quoteBodyTypeSizeV5+quoteBodySizeFieldLengthV5)
-	}
 	copy(data[offset:], tdQuoteBodyData)
+
 	return data, nil
 }
 
@@ -1263,15 +1266,18 @@ func TdQuoteBodyV5ToAbiBytes(tdQuoteBodyV5 *pb.TDQuoteBodyV5, tdxVersion int32) 
 	if err != nil {
 		return nil, fmt.Errorf("td quote body V5 to abi bytes conversion failed: %v", err)
 	}
+
 	expectedQuoteBodySize := tdQuoteBodySizeV5TDX10
 	if tdxVersion == tdxVersion15BodyType {
 		data = append(data, tdQuoteBodyV5.GetTeeTcbSvn2()...)
 		data = append(data, tdQuoteBodyV5.GetMrServiceTd()...)
 		expectedQuoteBodySize = tdQuoteBodySizeV5TDX15
 	}
+
 	if len(data) != expectedQuoteBodySize {
 		return nil, fmt.Errorf("td quote body V5 size is %d bytes. Expected %d bytes", len(data), expectedQuoteBodySize)
 	}
+
 	return data, nil
 }
 
