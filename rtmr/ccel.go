@@ -37,32 +37,48 @@ type ParseTdxCcelOpts struct {
 	ExtractOpt   extract.Opts
 }
 
-func getRtmrsFromTdQuoteV4(quote *tdxpb.QuoteV4) (*register.RTMRBank, error) {
-	bank := register.RTMRBank{}
-	rtmrs := quote.TdQuoteBody.Rtmrs
+const maxRtmrCount = 4
+
+func buildRtmrBank(rtmrs [][]byte) (*register.RTMRBank, error) {
+	// TDX quotes have a maximum of 4 RTMRs (RTMR0..RTMR3).
+	if len(rtmrs) > maxRtmrCount {
+		return nil, fmt.Errorf("too many RTMRs in quote: got %d, max %d", len(rtmrs), maxRtmrCount)
+	}
+	bank := register.RTMRBank{
+		RTMRs: make([]register.RTMR, 0, len(rtmrs)),
+	}
 	for index, rtmr := range rtmrs {
 		bank.RTMRs = append(bank.RTMRs, register.RTMR{
-			Index:  int(index),
+			Index:  index,
 			Digest: rtmr,
 		})
-		// Tdx Quote V4 has a maximum of 4 RTMRs
-		if index > 3 {
-			return nil, fmt.Errorf("too many RTMRs in quote")
-		}
 	}
 	return &bank, nil
 }
 
-// GetRtmrsFromTdQuote extracts the RTMRs from a TDX attestation quote.
+// GetRtmrsFromTdQuote extracts the RTMRs from a QuoteV4 or QuoteV5 TDX attestation quote.
 // It is the caller's responsibility to verify the quote before calling this function.
-func GetRtmrsFromTdQuote(quote interface{}) (*register.RTMRBank, error) {
+func GetRtmrsFromTdQuote(quote any) (*register.RTMRBank, error) {
 	switch q := quote.(type) {
 	case *tdxpb.QuoteV4:
-		rtmrs, err := getRtmrsFromTdQuoteV4(q)
-		if err != nil {
-			return nil, err
+		if q == nil {
+			return nil, abi.ErrQuoteV4Nil
 		}
-		return rtmrs, nil
+		if q.GetTdQuoteBody() == nil {
+			return nil, abi.ErrTDQuoteBodyNil
+		}
+		return buildRtmrBank(q.GetTdQuoteBody().GetRtmrs())
+	case *tdxpb.QuoteV5:
+		if q == nil {
+			return nil, abi.ErrQuoteV5Nil
+		}
+		if q.GetTdQuoteBodyDescriptor() == nil {
+			return nil, abi.ErrTDQuoteBodyDescriptorNil
+		}
+		if q.GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5() == nil {
+			return nil, abi.ErrTDQuoteBodyNil
+		}
+		return buildRtmrBank(q.GetTdQuoteBodyDescriptor().GetTdQuoteBodyV5().GetRtmrs())
 	default:
 		return nil, fmt.Errorf("unsupported quote type: %T", quote)
 	}
